@@ -1,0 +1,16 @@
+type Event {
+    id: ID!
+    name: String
+    where: String
+    when: String
+    description: String
+}
+
+type Query {
+    # Get a single event by id.
+    getEvent(id: ID!): Event
+}
+
+schema {
+    query: Query
+}

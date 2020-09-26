@@ -16,19 +16,11 @@ test: ## Run unittests
 
 .PHONY: build clean deploy
 
-build: build_fetch
+build:
+	env GOOS=linux go build -ldflags="-s -w" -o build/rds-statement-runner $(shell find . -name '*.go' | grep -v _test.go)
 
-build_fetch:
-	env GOOS=linux go build -ldflags="-s -w" -o build/fetch $(shell find fetch/ -name '*.go' | grep -v _test.go)
-
-zip: build fetch_zip
-
-fetch_zip: build_fetch
-	zip -j -r9 build/fetch.zip build/fetch
+zip: build
+	zip -j -r9 build/rds-statement-runner.zip build/rds-statement-runner
 
 clean:
 	@rm -rf build/
-
-deploy: clean build zip
-	terraform apply -auto-approve
-
