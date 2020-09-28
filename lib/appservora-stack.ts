@@ -82,20 +82,27 @@ export class AppServOraStack extends Stack {
             databaseName: defaultDatabaseName,
             dbArn: dbArn,
             statements: [
-                `CREATE TABLE Events (
-                        id INT,
-                        name VARCHAR(255),
-                        location VARCHAR(255),
-                        at DATE,
-                        description VARCHAR(255))`,
+                    `CREATE TABLE Events
+                     (
+                         id          INT,
+                         name        VARCHAR(255),
+                         location    VARCHAR(255),
+                         at          DATE,
+                         description VARCHAR(255)
+                     )`,
 
-                `INSERT INTO Events (id, name, location, at, description)
-                 VALUES (1, 'First ever', '0.0;0.0', DATE('2017-04-04 01:01:01'), 'It is still happening!')`
+                    `INSERT INTO Events (id, name, location, at, description)
+                     VALUES (1, 'First ever', '0.0;0.0', DATE('2017-04-04 01:01:01'), 'It is still happening!')`
             ]
         })
 
-        const coapi = new appsync.GraphqlApi(this, `graphql`, {
-            name: `graphql`,
+        new CfnOutput(this, 'test-query', {
+            exportName: 'test-query',
+            value: `aws rds-data execute-statement --resource-arn "${dbArn}" --database "${defaultDatabaseName}" --secret-arn "${dbCreds.secretArn}" --sql "select * from Events"`
+        })
+
+        const coapi = new appsync.GraphqlApi(this, `aurora-graphql`, {
+            name: `aurora-graphql`,
             schema: appsync.Schema.fromAsset(join(__dirname, 'schema.graphql')),
             authorizationConfig: {
                 defaultAuthorization: {
@@ -104,17 +111,28 @@ export class AppServOraStack extends Stack {
             },
         });
 
+        new CfnOutput(this, 'api-id', {
+            exportName: 'api-id',
+            value: coapi.apiId
+        })
+
         const appsyncServiceRole = new iam.Role(this, `appsync-service-role`, {
             roleName: `appsync-service-role`,
             assumedBy: new iam.ServicePrincipal("appsync.amazonaws.com"),
+            managedPolicies: [
+                iam.ManagedPolicy.fromAwsManagedPolicyName("service-role/AWSAppSyncPushToCloudWatchLogs")
+            ],
             inlinePolicies: {
                 "access-rds": new iam.PolicyDocument({
                     statements: [new iam.PolicyStatement({
                         effect: iam.Effect.ALLOW,
-                        actions: ['rds:*'],
-                        resources: ['*']
-                    })
-                    ]
+                        actions: ['rds:*', 'rds-data:*'],
+                        resources: [dbArn]
+                    }), new iam.PolicyStatement({
+                        effect: iam.Effect.ALLOW,
+                        actions: ['secretsmanager:*'],
+                        resources: [dbCreds.secretArn]
+                    })]
                 })
             }
         })
@@ -129,10 +147,31 @@ export class AppServOraStack extends Stack {
                     awsRegion: 'us-east-1',
                     awsSecretStoreArn: dbCreds.secretArn,
                     databaseName: defaultDatabaseName,
-                    dbClusterIdentifier: aurora.clusterIdentifier
+                    dbClusterIdentifier: dbArn
                 }
             },
             serviceRoleArn: appsyncServiceRole.roleArn
         })
+
+        const listEventsResolver = new appsync.CfnResolver(this, `list-event-resolver`, {
+            apiId: coapi.apiId,
+            fieldName: "listEvents",
+            typeName: "Query",
+            requestMappingTemplate: `{
+                "version": "2018-05-29",
+                "statements": [
+                    "select * from Events"
+                ]
+            }`,
+            responseMappingTemplate: `
+            #if($ctx.error)
+                $utils.error($ctx.error.message, $ctx.error.type)
+            #end
+
+            $utils.toJson($utils.rds.toJsonObject($ctx.result)[0])`,
+            dataSourceName: appsyncDataSource.name
+        })
+
+        listEventsResolver.addDependsOn(appsyncDataSource);
     }
 }

@@ -70,9 +70,5 @@ export class RdsStatementRunner extends cdk.Construct {
         })
         resource.node.addDependency(runner)
 
-        new CfnOutput(this, 'test-query', {
-            exportName: 'test-query',
-            value: `aws rds-data execute-statement --resource-arn "${props.dbArn}" --database "${props.databaseName}" --secret-arn "${props.secretArn}" --sql "select * from Events"`
-        })
     }
 }
