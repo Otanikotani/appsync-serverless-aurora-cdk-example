@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/rdsdataservice"
 	"log"
@@ -20,7 +21,7 @@ func main() {
 }
 
 func handler(_ context.Context, event CustomResourceEvent) {
-	log.Printf("Event: %s", event)
+	log.Printf("Event: %s", event.RequestType)
 	if event.RequestType == "Create" {
 		onCreate()
 	}
@@ -67,7 +68,11 @@ func onCreate() {
 		log.Printf("Executing statement: %s\n", input)
 		output, err := svc.ExecuteStatement(input)
 		if err != nil {
-			log.Fatalf("Failed to execute statement %s: %v\n", "foo", err)
+			if awsErr, ok := err.(awserr.Error); ok {
+				log.Fatalf("Failed to execute statement %s:\nCode: %s\nMessage: %s\nOrig Message:%v\n", statement,
+					awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
+			}
+
 		}
 		log.Print(output)
 	}

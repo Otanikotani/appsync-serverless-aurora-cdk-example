@@ -4,6 +4,7 @@ import * as iam from '@aws-cdk/aws-iam';
 import * as logs from '@aws-cdk/aws-logs';
 import * as lambda from '@aws-cdk/aws-lambda';
 import {join} from "path";
+import {CfnOutput} from "@aws-cdk/core";
 
 export interface RdsStatementRunnerProps {
     readonly dbArn: string;
@@ -22,7 +23,24 @@ export class RdsStatementRunner extends cdk.Construct {
             managedPolicies: [
                 iam.ManagedPolicy.fromAwsManagedPolicyName("AmazonRDSDataFullAccess"),
                 iam.ManagedPolicy.fromAwsManagedPolicyName("service-role/AWSLambdaBasicExecutionRole")
-            ]
+            ],
+            inlinePolicies: {
+                "secret-access": new iam.PolicyDocument({
+                    statements: [new iam.PolicyStatement({
+                        effect: iam.Effect.ALLOW,
+                        actions: [
+                            "secretsmanager:GetSecretValue",
+                            "secretsmanager:PutResourcePolicy",
+                            "secretsmanager:PutSecretValue",
+                            "secretsmanager:DeleteSecret",
+                            "secretsmanager:DescribeSecret",
+                            "secretsmanager:TagResource"
+                        ],
+                        resources: [props.secretArn]
+                    })
+                    ]
+                })
+            }
         })
 
         const runner = new lambda.Function(this, `rds-statement-runner-lambda-${id}`, {
@@ -51,5 +69,10 @@ export class RdsStatementRunner extends cdk.Construct {
             serviceToken: provider.serviceToken
         })
         resource.node.addDependency(runner)
+
+        new CfnOutput(this, 'test-query', {
+            exportName: 'test-query',
+            value: `aws rds-data execute-statement --resource-arn "${props.dbArn}" --database "${props.databaseName}" --secret-arn "${props.secretArn}" --sql "select * from Events"`
+        })
     }
 }

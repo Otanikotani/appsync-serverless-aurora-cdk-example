@@ -15,9 +15,6 @@ export class AppServOraStack extends Stack {
     constructor(scope: App, id: string, props: AppServOraStackProps) {
         super(scope, id, props);
 
-        const acc = props.env?.account!!
-        const region = props.env?.region!!
-
         const vpc = new ec2.Vpc(this, `vpc`, {
             cidr: '10.0.0.0/16',
         })
@@ -32,27 +29,20 @@ export class AppServOraStack extends Stack {
             }
         })
 
+        new CfnOutput(this, 'secret-arn', {
+            exportName: 'secret-arn',
+            value: dbCreds.secretArn
+        })
+
         const auroraSg = new ec2.SecurityGroup(this, 'aurora-security-group', {
             securityGroupName: 'aurora-security-group',
             vpc: vpc
         })
 
-        new ec2.InterfaceVpcEndpoint(this, 'aurora-service-endpoint', {
-            service: {
-                name: "com.amazonaws.us-east-1.rds-data",
-                port: 3306 //not changeable for serverless aurora
-            },
-            privateDnsEnabled: true,
-            vpc: vpc,
-            securityGroups: [auroraSg],
-            subnets: {
-                subnets: vpc.privateSubnets
-            },
-        })
-
         const defaultDatabaseName = 'sample_db'
         //https://github.com/aws/aws-cdk/issues/929#issuecomment-644850341
         const aurora = new rds.DatabaseCluster(this, "aurora-cluster", {
+            clusterIdentifier: "aurora-cluster",
             engine: rds.DatabaseClusterEngine.auroraMysql({version: rds.AuroraMysqlEngineVersion.VER_2_08_1}),
             masterUser: {
                 username: dbCreds.secretValueFromJson('username').toString(),
@@ -69,7 +59,6 @@ export class AppServOraStack extends Stack {
         })
         const cfn_aurora_cluster = (aurora.node.defaultChild as rds.CfnDBCluster);
 
-
         cfn_aurora_cluster.addPropertyOverride("EngineMode", "serverless")
         cfn_aurora_cluster.addPropertyOverride("EnableHttpEndpoint", true)
         cfn_aurora_cluster.addPropertyOverride("ScalingConfiguration", {
@@ -80,7 +69,7 @@ export class AppServOraStack extends Stack {
         })
         aurora.node.tryRemoveChild('Instance1');
 
-        const dbArn = `arn:aws:rds:${region}:${acc}:cluster:${aurora.clusterIdentifier}`
+        const dbArn = `arn:aws:rds:${this.region}:${this.account}:cluster:${aurora.clusterIdentifier}`
 
         new CfnOutput(this, 'db-arn', {
             exportName: 'db-arn',
